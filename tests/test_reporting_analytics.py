@@ -142,3 +142,69 @@ def test_branch_attribution_cannot_be_forged_and_payment_keeps_it(client,db_sess
     result=client.post('/api/v1/payments/create',headers=headers('admin'),json=body);assert result.status_code==200,result.text
     payment=db_session.get(Payment,result.json()['payment_id']);assert payment.branch_id=='a2'
     db_session.get(User,'admin').branch_id='a1';db_session.commit();assert db_session.get(Payment,payment.id).branch_id=='a2'
+
+
+def test_manual_clinical_report_local_dates_related_names_and_exact_columns(client,db_session,reporting):
+    from app.models.clinical import ClinicalRecord
+    for identity, when in [('before',datetime(2026,10,31,3,59)),('first',datetime(2026,10,31,4)),('last',datetime(2026,11,1,3,59)),('after',datetime(2026,11,1,4))]:
+        db_session.add(ClinicalRecord(id=identity,tenant_id='alpha',branch_id='a1',patient_id='p1',nutritionist_id='doctor',diagnosis='Control nutricional',clinical_goals='Reducir sodio',evolution_notes='Mejor descanso',created_at=when))
+    db_session.commit()
+    body={'entity':'clinical_records','columns':['patient_name','nutritionist_name','diagnosis','created_at'],'start_date':'2026-10-31','end_date':'2026-10-31','search':'p1'}
+    response=client.post('/api/v1/reports/query',headers=headers('admin'),json=body)
+    assert response.status_code==200,response.text
+    report=response.json()
+    assert [c['key'] for c in report['columns']]==body['columns']
+    assert report['total_rows']==2
+    assert {r['created_at'] for r in report['rows']}=={'2026-10-31 00:00','2026-10-31 23:59'}
+    assert all(r['patient_name']=='p1' and r['nutritionist_name']=='doctor' for r in report['rows'])
+    for search in ['doctor','Reducir sodio','Mejor descanso']:
+        result=client.post('/api/v1/reports/query',headers=headers('admin'),json={**body,'search':search})
+        assert result.status_code==200 and result.json()['total_rows']==2,result.text
+    assert client.post('/api/v1/reports/query',headers=headers('admin'),json={**body,'status':'CONFIRMED'}).status_code==400
+    # Exports use the same manual columns and date-filtered rows as the preview.
+    from openpyxl import load_workbook
+    import io
+    exported=client.post('/api/v1/reports/export/excel',headers=headers('admin'),json=body)
+    assert exported.status_code==200,exported.text[:200]
+    rows=list(load_workbook(io.BytesIO(exported.content),data_only=True).active.values)
+    labels=tuple(c['label'] for c in report['columns'])
+    header=next(i for i,row in enumerate(rows) if tuple(row[:len(labels)])==labels)
+    assert rows[header+1][0]=='p1' and rows[header+2][0]=='p1'
+    pdf=client.post('/api/v1/reports/export/pdf',headers=headers('admin'),json=body)
+    assert pdf.status_code==200 and pdf.content.startswith(b'%PDF'),pdf.text[:200]
+
+
+def test_manual_report_supports_all_seven_entities_with_selected_columns(client,db_session,reporting):
+    from app.models.recipe import Recipe
+    from app.models.clinical import ClinicalRecord
+    from app.models.ai_nutrition import NutritionalPlan
+    from app.services.report_service import ReportService
+    db_session.add(Recipe(id='dish',tenant_id='alpha',branch_id='a1',created_by='doctor',title='Almuerzo de prueba',ingredients='Arroz',instructions='Cocinar'))
+    db_session.add(ClinicalRecord(id='record',tenant_id='alpha',branch_id='a1',patient_id='p1',nutritionist_id='doctor',diagnosis='Control'))
+    db_session.add(NutritionalPlan(id='plan',tenant_id='alpha',branch_id='a1',patient_id='p1',nutritionist_id='doctor',meals_json='[]',status='APPROVED'))
+    db_session.add(ActivityLog(id='mutation',tenant_id='alpha',branch_id='a1',user_id='doctor',action='CITA_CREADA',description='Registro de prueba',category='OPERACIONES'))
+    db_session.commit()
+    for entity, config in ReportService.ENTITIES_CONFIG.items():
+        columns=[c['key'] for c in config['columns']]
+        response=client.post('/api/v1/reports/query',headers=headers('admin'),json={'entity':entity,'columns':columns})
+        assert response.status_code==200,(entity,response.text)
+        data=response.json()
+        assert data['total_rows']>0,(entity,data)
+        assert [c['key'] for c in data['columns']]==columns
+        assert all(set(row)==set(columns) for row in data['rows'])
+        assert all(row['company_name']=='Nutri Norte' and row['branch_name']=='Centro' for row in data['rows'])
+    for entity,status in [('patients','ACTIVE'),('recipes','ACTIVE'),('appointments','COMPLETED'),('payments','COMPLETED'),('nutritional_plans','APPROVED'),('activity_logs','OPERACIONES')]:
+        response=client.post('/api/v1/reports/query',headers=headers('admin'),json={'entity':entity,'status':status})
+        assert response.status_code==200 and response.json()['total_rows']>0,(entity,response.text)
+
+
+def test_pdf_keeps_complete_clinical_text_instead_of_truncating(monkeypatch):
+    import reportlab.platypus
+    from app.services.report_service import ReportService
+    from app.schemas.report import ReportQueryResponse, ReportColumnMeta
+    original = reportlab.platypus.SimpleDocTemplate
+    monkeypatch.setattr(reportlab.platypus, 'SimpleDocTemplate', lambda *args, **kwargs: original(*args, **kwargs, pageCompression=0))
+    report = ReportQueryResponse(entity='clinical_records',title='Revisión clínica',generated_at=datetime(2026,10,31),columns=[ReportColumnMeta(key='diagnosis',label='Diagnóstico'),ReportColumnMeta(key='evolution_notes',label='Notas de evolución')],rows=[{'diagnosis':('Control nutricional completo. '*100)+'FIN_DIAG','evolution_notes':('Revisar evolución y seguimiento. '*100)+'FIN_NOTA'}],total_rows=1)
+    content=ReportService.generate_pdf(report).getvalue()
+    assert content.startswith(b'%PDF')
+    assert b'FIN_DIAG' in content and b'FIN_NOTA' in content

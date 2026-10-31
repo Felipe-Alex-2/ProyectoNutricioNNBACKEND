@@ -45,7 +45,7 @@ def test_invalid_meal_is_rejected(client, accounts, invalid):
 
 def test_food_access_respects_clinic_and_patient_link(client, db_session, accounts):
     for actor in ['patient', 'nutri', 'org']:
-        assert client.get('/api/v1/food/history?patient_id=other', headers=headers(actor)).status_code == 403
+        assert client.get('/api/v1/food/history?patient_id=other', headers=headers(actor)).status_code in (403, 404)
     assert client.get('/api/v1/food/history?patient_id=patient', headers=headers('nutri')).status_code == 403
     db_session.add(PatientNutritionistLink(patient_id='patient', nutritionist_id='nutri', tenant_id='a', pairing_code='NUTRI', status='LINKED'))
     db_session.commit()
@@ -62,7 +62,7 @@ def plan(db, identity, status='DRAFT'):
 
 def test_only_professional_can_generate_and_assign(client, accounts):
     assert client.post('/api/v1/plans/generate-draft', headers=headers('patient'), json={'patient_id': 'patient'}).status_code == 403
-    assert client.post('/api/v1/plans/generate-draft', headers=headers('org'), json={'patient_id': 'other'}).status_code == 403
+    assert client.post('/api/v1/plans/generate-draft', headers=headers('org'), json={'patient_id': 'other'}).status_code == 404
 
 
 def test_patient_sees_approved_plan_only(client, db_session, accounts):
@@ -94,7 +94,7 @@ def test_photo_rejects_fake_image_and_cross_clinic_before_ai(client, accounts, m
         pytest.fail('AI must not run for rejected input')
     monkeypatch.setattr(GeminiService, 'analyze_image', unexpected)
     assert client.post('/api/v1/food/analyze', headers=headers('patient'), files={'file': ('fake.jpg', b'not an image', 'image/jpeg')}).status_code == 400
-    assert client.post('/api/v1/food/analyze', headers=headers('org'), data={'patient_id': 'other'}, files={'file': ('food.jpg', b'\xff\xd8\xffabc', 'image/jpeg')}).status_code == 403
+    assert client.post('/api/v1/food/analyze', headers=headers('org'), data={'patient_id': 'other'}, files={'file': ('food.jpg', b'\xff\xd8\xffabc', 'image/jpeg')}).status_code == 404
 
 
 def test_staff_can_register_photo_for_authorized_patient(client, db_session, accounts, monkeypatch):

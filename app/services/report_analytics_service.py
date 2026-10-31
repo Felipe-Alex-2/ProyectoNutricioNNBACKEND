@@ -118,8 +118,15 @@ class ReportAnalyticsService:
             elif operator=='lte':q=q.filter(column<=value)
         if req.search:
             term='%'+req.search.strip()+'%'
-            fields=[getattr(model,k) for k in ('full_name','email','title','concept','customer_name','diagnosis','description','action','reason','goal') if hasattr(model,k)]
-            if fields:q=q.filter(or_(*(f.ilike(term) for f in fields)))
+            fields=[getattr(model,k) for k in ('full_name','email','phone','title','concept','customer_name','customer_email','diagnosis','clinical_goals','evolution_notes','description','action','user_name','user_email','reason','goal','category','difficulty','clinical_notes') if hasattr(model,k)]
+            matches=[f.ilike(term) for f in fields]
+            if model is not User:
+                people=db.query(User.id).filter(or_(User.full_name.ilike(term),User.email.ilike(term),User.phone.ilike(term)))
+                for key in ('patient_id','nutritionist_id'):
+                    if hasattr(model,key): matches.append(getattr(model,key).in_(people))
+            matches.append(model.tenant_id.in_(db.query(Tenant.id).filter(Tenant.name.ilike(term))))
+            matches.append(branch_col.in_(db.query(Branch.id).filter(Branch.name.ilike(term))))
+            q=q.filter(or_(*matches))
         return q,model,branch_col,dt,companies,branches
 
     @classmethod

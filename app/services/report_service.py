@@ -169,7 +169,7 @@ class ReportService:
         if model is Recipe and not req.status:q=q.filter(Recipe.is_active.is_(True))
         key=req.sort_by or ('scheduled_at' if model is Appointment else 'created_at')
         if key not in {c.name for c in model.__table__.columns}:raise ValueError('La columna de orden no está disponible para este reporte.')
-        ordering=getattr(model,key);q=q.order_by(ordering.asc() if req.sort_order=='asc' else ordering.desc())
+        ordering=getattr(model,key);q=q.order_by(ordering.asc() if req.sort_order=='asc' else ordering.desc(),model.id.asc())
         total=q.order_by(None).count();items=q.limit(req.limit or 500).all()
         names={c.id:c.name for c in companies};branch_names={b.id:b.name for b in branches}
         ids={getattr(item,k,None) for item in items for k in ('patient_id','nutritionist_id','created_by','user_id')}
@@ -182,7 +182,12 @@ class ReportService:
             nutrition_ids=[l.nutritionist_id for l in links.values() if l.nutritionist_id]
             people.update({u.id:u for u in db.query(User).filter(User.id.in_(nutrition_ids)).all()})
         def person_name(identity):return people[identity].full_name if identity in people else 'Sin asignar'
-        def formatted(value):return value.strftime('%Y-%m-%d %H:%M') if isinstance(value,datetime) else value
+        def formatted(value):
+            if not isinstance(value,datetime): return value
+            from datetime import timezone, timedelta
+            if model is not ActivityLog:
+                value=(value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).astimezone(timezone(timedelta(hours=-4)))
+            return value.strftime('%Y-%m-%d %H:%M')
         rows=[]
         for item in items:
             if model is ActivityLog and not is_mutation(item.action):continue
@@ -358,21 +363,25 @@ class ReportService:
         for row in report.rows:
             row_cells = []
             for col in report.columns:
-                val = str(row.get(col.key, ""))
-                # Truncar textos demasiado largos en PDF para evitar saltos masivos
-                if len(val) > 70:
-                    val = val[:67] + "..."
+                value = row.get(col.key)
+                val = '' if value is None else str(value)
                 row_cells.append(Paragraph(escape(val), table_cell_style))
             table_data.append(row_cells)
 
         # Crear tabla y aplicar estilos
-        t = Table(table_data, repeatRows=1)
+        long_fields={'diagnosis','clinical_goals','evolution_notes','description','clinical_notes','reason','cancellation_reason'}
+        weights=[2.2 if column.key in long_fields else 1.65 if column.type == 'date' else 1.3 for column in report.columns]
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        minimums=[max(55, max((stringWidth(word, 'Helvetica-Bold', 9) for word in column.label.split()), default=0)+16) for column in report.columns]
+        remaining=doc.width-sum(minimums)
+        widths=[minimum+remaining*weight/sum(weights) for minimum,weight in zip(minimums,weights)] if remaining>=0 else [doc.width*minimum/sum(minimums) for minimum in minimums]
+        t = Table(table_data, repeatRows=1, colWidths=widths, splitInRow=1)
         t.setStyle(
             TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#206443")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
                 ("TOPPADDING", (0, 0), (-1, 0), 6),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7FAF8")]),
