@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from app.models.tenant import Tenant
 from app.models.company import Branch, CompanyAdministrator
@@ -37,6 +37,11 @@ class TenantService:
 
     @staticmethod
     def create(db: Session, data: TenantCreate) -> Tenant:
+        if db.get_bind().dialect.name == 'postgresql':
+            db.execute(text("SET LOCAL lock_timeout = '5s'"))
+            db.execute(text("SET LOCAL statement_timeout = '20s'"))
+            if not db.execute(text('SELECT pg_try_advisory_xact_lock(728451)')).scalar():
+                raise ConflictException('Hay otra creación de empresa en proceso. Actualiza la lista y vuelve a intentarlo.')
         if not data.administrator_id: raise BadRequestException('Selecciona una cuenta administradora para la empresa.')
         administrator = db.get(User, data.administrator_id)
         if not administrator or not administrator.is_active or administrator.role_id != 'ADMIN_ORGANIZATION':
@@ -51,12 +56,12 @@ class TenantService:
             raise ConflictException("No se puede crear la sucursal con campos vacios. Debe ingresar el nombre y el codigo identificador.")
 
         # Validacion 2: Nombre unico
-        existing_name = db.query(Tenant).filter(func.lower(Tenant.name) == clean_name.lower()).first()
+        existing_name = next((row for row in db.query(Tenant).all() if ' '.join(row.name.split()).casefold() == clean_name.casefold()), None)
         if existing_name:
             raise ConflictException(f"Ya existe una sucursal con el nombre '{clean_name}'. No se permite duplicar nombres de sucursales.")
 
         # Validacion 3: Codigo unico
-        existing = db.query(Tenant).filter(Tenant.code == clean_code).first()
+        existing = db.query(Tenant).filter(func.upper(func.trim(Tenant.code)) == clean_code).first()
         if existing:
             raise ConflictException(f"Ya existe una sucursal con el codigo '{clean_code}'. No se permite duplicar codigos de sucursales.")
 

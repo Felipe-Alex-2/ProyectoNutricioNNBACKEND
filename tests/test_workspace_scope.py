@@ -88,6 +88,20 @@ def test_root_can_create_company_while_working_in_another_branch(client, db_sess
     identity=created.json()['id']
     assert identity in {c['id'] for c in client.get('/api/v1/tenants',headers=auth('root')).json()}
     assert db_session.get(User,candidate.json()['id']).tenant_id==identity
+
+
+def test_company_creation_rejects_blanks_and_normalized_duplicates(client, db_session, workspaces):
+    candidate=client.post('/api/v1/tenants/administrator-candidates',headers=auth('root'),json={'full_name':'Administrador Nuevo','email':'validationadmin@example.com','password':'Password123!'})
+    assert candidate.status_code==201
+    body={'name':'Empresa nueva','code':'NEW','administrator_id':candidate.json()['id'],'department_code':'01','initial_province_code':'0101','initial_municipality_code':'010101'}
+    for invalid in [{'name':'   '},{'name':' a '},{'code':'   '},{'code':'A B'},{'initial_branch_name':'   '},{'initial_branch_code':'A B'}]:
+        response=client.post('/api/v1/tenants',headers=auth('root'),json={**body,**invalid})
+        assert response.status_code==422,response.text
+    for duplicate in [{'name':'  eMPRESA   a  '},{'code':' a1 '}]:
+        response=client.post('/api/v1/tenants',headers=auth('root'),json={**body,**duplicate})
+        assert response.status_code==409,response.text
+    assert db_session.query(Tenant).count()==2
+    assert db_session.get(User,candidate.json()['id']).tenant_id is None
     changed = client.put('/api/v1/users/me/workspace',headers=auth('root'),json={'tenant_id':'a','branch_id':None})
     assert changed.status_code == 200
     assert len(client.get('/api/v1/recipes',headers=auth('root')).json()) == 2

@@ -66,7 +66,17 @@ def create_tenant(
     current_user: User = Depends(get_current_user),
 ):
     require_role(current_user, {"SUPERADMIN"})
-    return TenantService.create(db, data)
+    from sqlalchemy.exc import IntegrityError, OperationalError
+    from app.core.exceptions import ConflictException
+    from fastapi import HTTPException
+    try:
+        return TenantService.create(db, data)
+    except IntegrityError:
+        db.rollback()
+        raise ConflictException('No se pudo crear: el nombre, código o administrador ya está registrado. Actualiza la lista.')
+    except OperationalError:
+        db.rollback()
+        raise HTTPException(status_code=503, detail='La base de datos no respondió a tiempo. Actualiza la lista para comprobar si la empresa se creó antes de reintentar.')
 
 
 @router.put("/{tenant_id}", response_model=TenantResponse)

@@ -71,7 +71,7 @@ class UserUpdate(BaseModel):
     branch_id: Optional[str] = None
     full_name: Optional[str] = Field(None, min_length=2, max_length=250, description="Nombre completo (máximo 250 caracteres)")
     email: Optional[EmailStr] = Field(None, description="Correo electrónico")
-    phone: Optional[str] = Field(None, min_length=7, max_length=25, description="Teléfono de contacto")
+    phone: Optional[str] = Field(None, max_length=25, description="Teléfono de contacto")
     password: Optional[str] = Field(None, min_length=8, max_length=128, description="Nueva contraseña")
     role_id: Optional[str] = Field(None, description="Rol del usuario")
     tenant_id: Optional[str] = Field(None, description="ID de la organización")
