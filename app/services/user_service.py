@@ -49,6 +49,8 @@ class UserService:
             db_obj.email = obj_in.email.lower().strip()
         if obj_in.phone is not None:
             db_obj.phone = obj_in.phone.strip() if obj_in.phone else None
+        if obj_in.avatar is not None:
+            db_obj.avatar = obj_in.avatar or None
         if obj_in.password is not None:
             db_obj.hashed_password = get_password_hash(obj_in.password)
             db_obj.session_version = (db_obj.session_version or 0) + 1

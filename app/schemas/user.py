@@ -76,6 +76,7 @@ class UserUpdate(BaseModel):
     role_id: Optional[str] = Field(None, description="Rol del usuario")
     tenant_id: Optional[str] = Field(None, description="ID de la organización")
     is_active: Optional[bool] = Field(None, description="Estado de actividad")
+    avatar: Optional[str] = Field(None, max_length=400000, description="Avatar: 'preset:<id>' o imagen en data URL; vacío lo quita")
     developer_key: Optional[str] = Field(None, min_length=4, max_length=128, description="Llave personalizada para acceso a bitácora")
 
     @field_validator("password")
@@ -107,6 +108,17 @@ class UserUpdate(BaseModel):
         return v
 
 
+    @field_validator("avatar")
+    @classmethod
+    def validate_avatar(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if v and not re.fullmatch(r"preset:(hombre-lentes|hombre|mujer)|data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+", v):
+            raise ValueError("Avatar no válido: usa uno predeterminado o una imagen PNG, JPG o WEBP.")
+        return v
+
+
 class DeveloperKeyVerifyRequest(BaseModel):
     developer_key: str = Field(..., min_length=1, description="Llave del administrador o desarrollador para la bitácora")
 
@@ -127,6 +139,7 @@ class UserResponse(UserBase):
     tenant_id: Optional[str] = None
     is_active: bool
     is_verified: bool
+    avatar: Optional[str] = None
     has_custom_developer_key: Optional[bool] = False
     created_at: datetime
     updated_at: datetime

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Integer
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Integer, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
     phone = Column(String(50), nullable=True)
+    avatar = Column(Text, nullable=True)  # "preset:<id>" o data URL de la imagen subida
 
     # Multi-tenant and RBAC
     role_id = Column(String(50), ForeignKey("roles.id", ondelete="RESTRICT"), default="CLIENTE", nullable=False)

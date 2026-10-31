@@ -76,6 +76,18 @@ def test_queries_ids_and_explicit_headers_enforce_branch(client, workspaces):
 
 def test_root_global_company_and_branch_views(client, workspaces):
     assert len(client.get('/api/v1/recipes',headers=auth('root')).json()) == 3
+
+
+def test_root_can_create_company_while_working_in_another_branch(client, db_session, workspaces):
+    client.put('/api/v1/users/me/workspace',headers=auth('root'),json={'tenant_id':'a','branch_id':'a1'})
+    candidate=client.post('/api/v1/tenants/administrator-candidates',headers=auth('root'),json={'full_name':'Nuevo Administrador','email':'newadmin@example.com','password':'Password123!'})
+    assert candidate.status_code==201,candidate.text
+    body={'name':'Nueva empresa Sucre','code':'NEW-SUCRE','administrator_id':candidate.json()['id'],'department_code':'01','initial_province_code':'0101','initial_municipality_code':'010101'}
+    created=client.post('/api/v1/tenants',headers=auth('root'),json=body)
+    assert created.status_code==201,created.text
+    identity=created.json()['id']
+    assert identity in {c['id'] for c in client.get('/api/v1/tenants',headers=auth('root')).json()}
+    assert db_session.get(User,candidate.json()['id']).tenant_id==identity
     changed = client.put('/api/v1/users/me/workspace',headers=auth('root'),json={'tenant_id':'a','branch_id':None})
     assert changed.status_code == 200
     assert len(client.get('/api/v1/recipes',headers=auth('root')).json()) == 2
