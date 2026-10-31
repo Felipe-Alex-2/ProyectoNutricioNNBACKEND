@@ -28,3 +28,5 @@ class ActivityLog(WorkspaceOwned, Base):
     created_at = Column(DateTime, default=bolivia_now, nullable=False)
 
     user = relationship("User")
+    tenant = relationship("Tenant", foreign_keys=[tenant_id])
+    branch = relationship("Branch", foreign_keys="[ActivityLog.branch_id]")
