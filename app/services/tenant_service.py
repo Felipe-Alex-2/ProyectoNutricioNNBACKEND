@@ -78,7 +78,9 @@ class TenantService:
         )
         db.add(tenant)
         db.flush()
-        branch = Branch(tenant_id=tenant.id, name=data.initial_branch_name.strip(), code=data.initial_branch_code.strip().upper(), address=data.address, province_code=data.initial_province_code, municipality_code=data.initial_municipality_code)
+        raw_branch_code = data.initial_branch_code.strip().upper()
+        branch_code = f'{clean_code}-PRINCIPAL'[:50] if raw_branch_code == 'PRINCIPAL' and db.query(Branch).filter(func.upper(func.trim(Branch.code)) == 'PRINCIPAL').first() else raw_branch_code
+        branch = Branch(tenant_id=tenant.id, name=data.initial_branch_name.strip(), code=branch_code, address=data.address, province_code=data.initial_province_code, municipality_code=data.initial_municipality_code)
         db.add(branch); db.flush()
         administrator.tenant_id = tenant.id; administrator.branch_id = branch.id
         administrator.session_version = (administrator.session_version or 0) + 1

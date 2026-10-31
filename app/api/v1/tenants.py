@@ -71,9 +71,19 @@ def create_tenant(
     from fastapi import HTTPException
     try:
         return TenantService.create(db, data)
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise ConflictException('No se pudo crear: el nombre, código o administrador ya está registrado. Actualiza la lista.')
+        orig = str(getattr(exc, 'orig', exc))
+        low = orig.lower()
+        if 'branches' in low and 'code' in low:
+            raise ConflictException('No se pudo crear: el código de la primera sucursal ya existe o la tabla branches tiene una restricción única global antigua. Actualiza la lista.')
+        if 'company_administrators' in low or 'user_id' in low:
+            raise ConflictException('No se pudo crear: la cuenta de administrador seleccionada ya está asignada a otra empresa. Actualiza la lista.')
+        if 'tenants' in low and 'code' in low:
+            raise ConflictException(f"No se pudo crear: el código de empresa '{data.code.strip().upper()}' ya está registrado. Actualiza la lista.")
+        if 'tenants' in low and 'name' in low:
+            raise ConflictException(f"No se pudo crear: el nombre de empresa '{data.name.strip()}' ya está registrado. Actualiza la lista.")
+        raise ConflictException(f"No se pudo crear: el nombre, código o administrador ya está registrado ({orig.splitlines()[0]}). Actualiza la lista.")
     except OperationalError:
         db.rollback()
         raise HTTPException(status_code=503, detail='La base de datos no respondió a tiempo. Actualiza la lista para comprobar si la empresa se creó antes de reintentar.')
