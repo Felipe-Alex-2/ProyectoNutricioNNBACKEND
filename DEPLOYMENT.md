@@ -19,7 +19,7 @@ SQLite sirve para trabajar localmente; valida también en PostgreSQL antes de
 desplegar. PayPal, Gemini, correo y Firebase requieren sus servicios y claves;
 este arranque no los simula ni recupera datos remotos.
 
-Python 3.12. Instala con `python -m pip install -r requirements.txt` (versiones verificadas en constraints.txt).
+Python 3.12. Instala con `python -m pip install -r requirements.txt` (versiones verificadas fijadas directamente en requirements.txt).
 
 ## Desarrollo aislado
 
