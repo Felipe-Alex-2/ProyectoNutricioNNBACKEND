@@ -1,7 +1,10 @@
+import os
 import sys
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import text, inspect
 from app.database import get_engine, Base, get_session_local
 import app.models
+from app.core.security import get_password_hash
 from app.models.tenant import Tenant
 from app.models.rbac import Role, Permission, RolePermission
 from app.models.user import User
@@ -9,6 +12,8 @@ from app.models.patient_link import PatientNutritionistLink
 from app.models.appointment import Appointment
 from app.models.notification import Notification
 from app.models.backup import BackupSetting, BackupLog
+from app.models.clinical import PatientAnamnesis
+from app.models.subscription import Subscription
 
 
 def init_db(seed_demo=False):
@@ -106,9 +111,10 @@ def init_db(seed_demo=False):
         db.commit()
         print("Role permissions mapped successfully.")
 
-        # 6. Optional development sample tenant
-        if not seed_demo:
+        # 6. Optional development / production sample tenant and demo accounts
+        if os.getenv("ENVIRONMENT") == "test":
             return
+
         # Seed Sample Tenant
         sample_tenant = db.query(Tenant).filter_by(code="VIDASANA").first()
         if not sample_tenant:
@@ -123,7 +129,104 @@ def init_db(seed_demo=False):
             )
             db.add(sample_tenant)
             db.commit()
+            db.refresh(sample_tenant)
             print("Sample tenant 'VIDASANA' created.")
+
+        # Seed Demo Accounts for CU testing and QA evaluation
+        demo_accounts = [
+            ("superadmin.demo@example.com", "Ns!g_zNkchYTGCA2mMFNeSg7aA", "Superadmin Demo", "SUPERADMIN", None),
+            ("administrador.demo@example.com", "Ns!8k4SB_aiWLYGDC2IY-Nn7aA", "Administrador Demo", "ADMIN_ORGANIZATION", sample_tenant.id),
+            ("nutricionista.demo@example.com", "Ns!p2o2hoJnMO7OwoTs5o2g7aA", "Nutricionista Demo", "NUTRICIONISTA", sample_tenant.id),
+            ("cliente.demo@example.com", "Ns!936FHDZ1cywq7TX2pYjd7aA", "Cliente Demo", "CLIENTE", sample_tenant.id),
+        ]
+
+        seeded_users = {}
+        for email, pwd, name, role, tenant_id in demo_accounts:
+            user = db.query(User).filter_by(email=email).first()
+            if not user:
+                user = User(
+                    email=email,
+                    hashed_password=get_password_hash(pwd),
+                    full_name=name,
+                    role_id=role,
+                    tenant_id=tenant_id,
+                    is_active=True,
+                )
+                db.add(user)
+            else:
+                user.hashed_password = get_password_hash(pwd)
+                user.role_id = role
+                if tenant_id and not user.tenant_id:
+                    user.tenant_id = tenant_id
+                user.is_active = True
+            db.commit()
+            db.refresh(user)
+            seeded_users[role] = user
+
+        # Ensure Client is linked to Nutritionist
+        if "CLIENTE" in seeded_users and "NUTRICIONISTA" in seeded_users:
+            link = db.query(PatientNutritionistLink).filter_by(
+                patient_id=seeded_users["CLIENTE"].id,
+                nutritionist_id=seeded_users["NUTRICIONISTA"].id,
+            ).first()
+            if not link:
+                link = PatientNutritionistLink(
+                    patient_id=seeded_users["CLIENTE"].id,
+                    nutritionist_id=seeded_users["NUTRICIONISTA"].id,
+                    tenant_id=sample_tenant.id,
+                    pairing_code="DEMO-2026",
+                    status="LINKED",
+                )
+                db.add(link)
+                db.commit()
+
+        # Ensure Client has initial Anamnesis for AI Plan generation (CU-13)
+        if "CLIENTE" in seeded_users:
+            anamnesis = db.query(PatientAnamnesis).filter_by(patient_id=seeded_users["CLIENTE"].id).first()
+            if not anamnesis:
+                anamnesis = PatientAnamnesis(
+                    patient_id=seeded_users["CLIENTE"].id,
+                    tenant_id=sample_tenant.id,
+                    birth_date=datetime(1995, 5, 20),
+                    gender="M",
+                    weight_kg=78.5,
+                    height_cm=176.0,
+                    target_weight_kg=72.0,
+                    target_weeks=12,
+                    pathologies="Ninguna",
+                    allergies="Ninguna",
+                    food_preferences="Prefiere comida casera, pollo, pescado, verduras frescas",
+                    water_intake_liters=2.2,
+                    physical_activity="Moderado",
+                    meals_per_day=4,
+                    sleep_hours=7.5,
+                    goal="Pérdida de grasa y tonificación",
+                    consent_data_processing=True,
+                )
+                db.add(anamnesis)
+                db.commit()
+
+        # Ensure Client has active Premium subscription for AI assistant
+        if "CLIENTE" in seeded_users:
+            sub = db.query(Subscription).filter_by(user_id=seeded_users["CLIENTE"].id).first()
+            if not sub:
+                sub = Subscription(
+                    user_id=seeded_users["CLIENTE"].id,
+                    tenant_id=sample_tenant.id,
+                    plan_name="CLIENTE_PREMIUM",
+                    status="ACTIVE",
+                    amount=5.0,
+                    currency="USD",
+                    started_at=datetime.now(timezone.utc),
+                    expires_at=datetime.now(timezone.utc) + timedelta(days=365),
+                )
+                db.add(sub)
+                db.commit()
+            elif sub.status != "ACTIVE":
+                sub.status = "ACTIVE"
+                sub.expires_at = datetime.now(timezone.utc) + timedelta(days=365)
+                db.commit()
+        print("Demo accounts and clinical records seeded successfully.")
 
     except Exception as e:
         db.rollback()
