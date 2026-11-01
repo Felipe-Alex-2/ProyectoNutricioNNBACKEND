@@ -334,7 +334,13 @@ class AppointmentService:
 
     @staticmethod
     def _to_out(a: Appointment) -> AppointmentOut:
+        payment = a.payment
+        method = payment.payment_method if payment else None
         return AppointmentOut(
+            payment_status='PAID' if payment and payment.status == 'COMPLETED' else 'UNPAID' if payment else 'UNRECORDED',
+            payment_preference='PRESENCIAL' if method in {'PRESENCIAL', 'EFECTIVO'} else 'ONLINE' if method in {'ONLINE', 'PAYPAL', 'WALLET'} else None,
+            payment_method=method,
+            payment_id=payment.id if payment else None,
             id=a.id,
             tenant_id=a.tenant_id,
             branch_id=a.branch_id,

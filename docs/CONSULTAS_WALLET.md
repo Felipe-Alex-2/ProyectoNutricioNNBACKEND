@@ -30,3 +30,12 @@ Se usan las variables PayPal existentes (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECR
 Las pruebas usan respuestas PayPal simuladas. Antes de dar por operativo el despliegue, realizar una recarga con comprador Sandbox y pagar una cita aceptada; comprobar saldo, historial, comprobante y estado en web. Las pruebas locales no verifican las credenciales del proveedor en Railway.
 
 Referencia del proveedor: https://developer.paypal.com/api/make-api-requests (idempotencia) y https://developer.paypal.com/api/rest/integration/orders-api (aprobación y captura).
+
+
+## Modalidad y columna de pago en citas
+
+Después de aceptar una cita, el cliente elige Online o Presencial. Elegir modalidad usa la misma ruta de pago con method=ONLINE/PRESENCIAL y solo actualiza el cobro pendiente; nunca marca el pago como completado. Online habilita wallet y PayPal. Presencial queda pendiente hasta el cobro en caja. Una orden PayPal iniciada debe verificarse antes de cambiar de modalidad.
+
+La API de citas devuelve payment_status (PAID, UNPAID o UNRECORDED), payment_preference (ONLINE o PRESENCIAL), payment_method y payment_id. Estos datos se obtienen del cobro vinculado, no del estado de la cita. Una cita antigua confirmada sin cobro vinculado se muestra como «Sin pago registrado»; no se presume que esté pagada. Gestión de citas muestra la columna Pago de solo lectura y las acciones de aceptación/cancelación; caja conserva el registro del cobro.
+
+Si /openapi.json no incluye /api/v1/wallet y /api/v1/wallet/topups, la versión publicada aún no contiene este módulo. En Railway, Redeploy repite el código de un despliegue anterior. Usar la paleta de comandos, Deploy Latest Commit, para desplegar main desde el repositorio backend correcto. Luego comprobar los Deploy Logs, el paso python prepare_db.py y las rutas publicadas. Referencia: https://docs.railway.com/deployments/deployment-actions.

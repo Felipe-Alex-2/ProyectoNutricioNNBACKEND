@@ -94,8 +94,8 @@ class ConsultationPaymentService:
         if user.role_id == 'CLIENTE':
             if appointment.patient_id != user.id:
                 raise HTTPException(403, detail='Solo puedes pagar tus citas.')
-            if method not in {'WALLET', 'PAYPAL'}:
-                raise HTTPException(403, detail='Selecciona wallet o PayPal.')
+            if method not in {'WALLET', 'PAYPAL', 'ONLINE', 'PRESENCIAL'}:
+                raise HTTPException(403, detail='Selecciona pago online o presencial.')
         else:
             require_role(user, STAFF_ROLES)
             require_tenant(user, appointment.tenant_id)
@@ -109,6 +109,10 @@ class ConsultationPaymentService:
         payment = payment or ConsultationPaymentService.ensure_charge(db, appointment)
         if method != 'PAYPAL' and payment.paypal_order_id:
             raise HTTPException(409, detail='Ya hay una orden PayPal. Verifica ese pago para evitar un cobro doble.')
+        if method in {'ONLINE', 'PRESENCIAL'}:
+            payment.payment_method = method
+            db.commit()
+            return {'payment_id': payment.id, 'status': 'PENDING', 'payment_preference': method}
         if method == 'PAYPAL':
             return ConsultationPaymentService.checkout(db, payment, return_url)
         if method == 'WALLET':

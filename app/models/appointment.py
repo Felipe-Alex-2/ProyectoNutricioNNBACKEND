@@ -34,3 +34,4 @@ class Appointment(WorkspaceOwned, Base):
     patient = relationship("User", foreign_keys=[patient_id])
     nutritionist = relationship("User", foreign_keys=[nutritionist_id])
     tenant = relationship("Tenant")
+    payment = relationship("Payment", uselist=False, viewonly=True, lazy="selectin")

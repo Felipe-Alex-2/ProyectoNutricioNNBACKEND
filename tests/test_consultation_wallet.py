@@ -103,3 +103,39 @@ def test_insufficient_wallet_unapproved_or_wrong_paypal_amount_never_confirms(cl
     assert capture().status_code==200
     assert capture().status_code==200
     assert db_session.get(Appointment,'appointment').status=='CONFIRMED'
+
+
+def test_patient_selects_in_person_without_marking_paid_and_staff_sees_choice(client, db_session, setup):
+    path='/api/v1/appointments/appointment/pay'
+    assert client.post(path,headers=auth('patient'),json={'method':'PRESENCIAL'}).status_code==409
+    accept(client)
+    assert client.post(path,headers=auth('other'),json={'method':'PRESENCIAL'}).status_code==403
+    selected=client.post(path,headers=auth('patient'),json={'method':'PRESENCIAL'})
+    assert selected.status_code==200,selected.text
+    assert selected.json()['status']=='PENDING'
+    row=client.get('/api/v1/appointments',headers=auth('admin')).json()[0]
+    assert row['payment_preference']=='PRESENCIAL'
+    assert row['payment_status']=='UNPAID'
+    assert row['status']=='ACCEPTED'
+    assert db_session.query(WalletMovement).count()==0
+    assert client.post(path,headers=auth('admin'),json={'method':'EFECTIVO'}).status_code==200
+    row=client.get('/api/v1/appointments',headers=auth('patient')).json()[0]
+    assert row['payment_status']=='PAID'
+    assert row['payment_preference']=='PRESENCIAL'
+    assert row['payment_method']=='EFECTIVO'
+    assert row['status']=='CONFIRMED'
+    # Completed charges cannot be reset to an unpaid preference by replaying a request.
+    assert client.post(path,headers=auth('patient'),json={'method':'ONLINE'}).json()['status']=='COMPLETED'
+    assert db_session.query(Payment).one().payment_method=='EFECTIVO'
+
+
+def test_online_preference_is_visible_without_charging_and_legacy_is_unrecorded(client, db_session, setup):
+    row=client.get('/api/v1/appointments',headers=auth('admin')).json()[0]
+    assert row['payment_status']=='UNRECORDED'
+    accept(client)
+    response=client.post('/api/v1/appointments/appointment/pay',headers=auth('patient'),json={'method':'ONLINE'})
+    assert response.status_code==200,response.text
+    row=client.get('/api/v1/appointments',headers=auth('admin')).json()[0]
+    assert row['payment_preference']=='ONLINE'
+    assert row['payment_status']=='UNPAID'
+    assert db_session.query(Payment).one().paypal_order_id is None

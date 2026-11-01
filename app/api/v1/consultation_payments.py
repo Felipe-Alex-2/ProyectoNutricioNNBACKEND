@@ -38,7 +38,7 @@ class Topup(BaseModel):
 
 
 class Pay(BaseModel):
-    method: Literal['WALLET', 'PAYPAL', 'EFECTIVO']
+    method: Literal['WALLET', 'PAYPAL', 'EFECTIVO', 'ONLINE', 'PRESENCIAL']
     mobile: bool = False
 
 

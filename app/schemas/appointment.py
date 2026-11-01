@@ -16,6 +16,10 @@ class AppointmentCancel(BaseModel):
 
 
 class AppointmentOut(BaseModel):
+    payment_status: str = "UNRECORDED"
+    payment_preference: Optional[str] = None
+    payment_method: Optional[str] = None
+    payment_id: Optional[str] = None
     branch_id: Optional[str] = None
     completed_at: Optional[datetime] = None
     id: str

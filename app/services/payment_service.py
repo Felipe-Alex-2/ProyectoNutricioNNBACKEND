@@ -425,7 +425,7 @@ class PaymentService:
             "FAILED": "FALLIDO",
         }.get(payment.status, payment.status)
 
-        method_text = {"EFECTIVO": "Efectivo (Caja Local)", "WALLET": "Wallet NutriSalud", "PENDING": "Por elegir"}.get(payment.payment_method, "PayPal Sandbox")
+        method_text = {"EFECTIVO": "Efectivo (Caja Local)", "WALLET": "Wallet NutriSalud", "PENDING": "Por elegir", "PRESENCIAL": "Presencial (pendiente de cobro)", "ONLINE": "Online (pendiente de pago)"}.get(payment.payment_method, "PayPal Sandbox")
 
         sucursal_info = f"""
         <b>Nombre:</b> {tenant_name}<br/>
