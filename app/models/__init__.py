@@ -10,6 +10,7 @@ from app.models.clinical import PatientAnamnesis, ClinicalRecord
 from app.models.subscription import Subscription
 from app.models.subscription_receipt import SubscriptionReceipt
 from app.models.payment import Payment
+from app.models.wallet import WalletMovement
 from app.models.appointment import Appointment
 from app.models.notification import Notification
 from app.models.backup import BackupSetting, BackupLog

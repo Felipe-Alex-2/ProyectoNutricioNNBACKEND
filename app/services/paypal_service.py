@@ -52,6 +52,7 @@ class PayPalService:
         description: str = "Suscripción NutriSalud",
         return_url: str = "http://localhost:4200/paypal-return",
         cancel_url: str = "http://localhost:4200/dashboard",
+        request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a PayPal order and return the order_id + approval_url.
@@ -97,6 +98,7 @@ class PayPalService:
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
+                **({"PayPal-Request-Id": request_id} if request_id else {}),
             },
             json=order_payload,
             timeout=30.0,
@@ -145,6 +147,7 @@ class PayPalService:
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
+                "PayPal-Request-Id": f"capture-{order_id}",
             },
             timeout=30.0,
         )

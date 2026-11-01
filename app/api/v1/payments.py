@@ -118,7 +118,10 @@ def cancel_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _authorize_payment(db, current_user, payment_id=payment_id)
+    payment = _authorize_payment(db, current_user, payment_id=payment_id)
+    require_role(current_user, STAFF_ROLES)
+    if payment.purpose != 'POS':
+        raise HTTPException(409, detail='Los cobros de citas y recargas se gestionan desde su operación de origen.')
     """
     Cancela un cobro pendiente en caja.
     """
@@ -147,10 +150,14 @@ def export_payment_pdf(
 
 
 def _authorize_payment(db, actor, payment_id=None, order_id=None):
-    require_role(actor, STAFF_ROLES)
     query = db.query(Payment)
     payment = query.filter(Payment.id == payment_id).first() if payment_id else query.filter(Payment.paypal_order_id == order_id).first()
     if payment is None:
         raise HTTPException(status_code=404, detail="Cobro no encontrado.")
-    require_tenant(actor, payment.tenant_id)
+    if actor.role_id == 'CLIENTE':
+        if payment.patient_id != actor.id:
+            raise HTTPException(403, detail='Solo puedes consultar tus pagos.')
+    else:
+        require_role(actor, STAFF_ROLES)
+        require_tenant(actor, payment.tenant_id)
     return payment

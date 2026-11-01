@@ -13,6 +13,9 @@ class Payment(WorkspaceOwned, Base):
     branch_id = Column(String(36), ForeignKey('branches.id', ondelete='SET NULL'), nullable=True, index=True)
     tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
     cashier_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    patient_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    appointment_id = Column(String(36), ForeignKey("appointments.id"), nullable=True, unique=True)
+    purpose = Column(String(30), nullable=False, default="POS", server_default="POS")
 
     customer_name = Column(String(255), nullable=False)
     customer_email = Column(String(255), nullable=True)

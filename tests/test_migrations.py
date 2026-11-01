@@ -119,3 +119,36 @@ def test_migrations_use_the_installed_postgresql_driver(monkeypatch, scheme):
     engine = create_engine(api_url)
     assert engine.dialect.driver == 'psycopg2'
     engine.dispose()
+
+
+def test_consultation_wallet_upgrades_existing_payment_table(tmp_path):
+    database = tmp_path / 'before_wallet.sqlite'
+    engine = create_engine(f'sqlite:///{database.as_posix()}')
+    legacy = MetaData()
+    for table in Base.metadata.sorted_tables:
+        if table.name != 'wallet_movements':
+            table.to_metadata(legacy)
+    payments = legacy.tables['payments']
+    for field in ('patient_id', 'appointment_id', 'purpose'):
+        column = payments.c[field]
+        for index in list(payments.indexes):
+            if field in index.columns: payments.indexes.remove(index)
+        for constraint in list(payments.constraints):
+            if field in constraint.columns: payments.constraints.remove(constraint)
+        for fk in list(column.foreign_keys): payments.foreign_keys.discard(fk)
+        payments._columns.remove(column)
+    legacy.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
+        connection.execute(text("INSERT INTO alembic_version VALUES ('20261031_07')"))
+        connection.execute(legacy.tables['tenants'].insert(),{'id':'old','name':'Empresa antigua','code':'OLD'})
+        connection.execute(payments.insert(),{'id':'paid','tenant_id':'old','customer_name':'Cliente antiguo','concept':'Consulta','amount':25,'status':'COMPLETED','currency':'USD'})
+    engine.dispose()
+    upgrade(database)
+    engine = create_engine(f'sqlite:///{database.as_posix()}')
+    assert 'wallet_movements' in inspect(engine).get_table_names()
+    assert {'patient_id','appointment_id','purpose'} <= {c['name'] for c in inspect(engine).get_columns('payments')}
+    with engine.connect() as connection:
+        row = connection.execute(text("SELECT amount,purpose FROM payments WHERE id='paid'")).one()
+        assert tuple(row) == (25,'POS')
+    engine.dispose()

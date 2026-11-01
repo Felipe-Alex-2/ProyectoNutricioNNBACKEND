@@ -32,6 +32,9 @@ class PaymentService:
     def _map_to_out(p: Payment) -> PaymentOut:
         return PaymentOut(
             id=p.id,
+            patient_id=p.patient_id,
+            appointment_id=p.appointment_id,
+            purpose=p.purpose,
             tenant_id=p.tenant_id,
             branch_id=p.branch_id,
             tenant_name=p.tenant.name if p.tenant else None,
@@ -179,6 +182,10 @@ class PaymentService:
         if payment.status == "COMPLETED":
             return PaymentService._map_to_out(payment)
 
+        if payment.purpose in {'CONSULTATION', 'WALLET_TOPUP'}:
+            from app.services.consultation_payment_service import ConsultationPaymentService
+            return ConsultationPaymentService.capture(db, payment)
+
         # Capture with PayPal
         try:
             capture_res = PayPalService.capture_order(paypal_order_id)
@@ -232,6 +239,7 @@ class PaymentService:
         if tenant_id:
             query = query.filter(Payment.tenant_id == tenant_id)
 
+        query = query.filter(Payment.purpose != "WALLET_TOPUP")
         totals = query.with_entities(
             func.coalesce(func.sum(case((Payment.status == "COMPLETED", Payment.amount), else_=0)), 0),
             func.count(Payment.id),
@@ -417,7 +425,7 @@ class PaymentService:
             "FAILED": "FALLIDO",
         }.get(payment.status, payment.status)
 
-        method_text = "Efectivo (Caja Local)" if payment.payment_method == "EFECTIVO" else "PayPal Sandbox"
+        method_text = {"EFECTIVO": "Efectivo (Caja Local)", "WALLET": "Wallet NutriSalud", "PENDING": "Por elegir"}.get(payment.payment_method, "PayPal Sandbox")
 
         sucursal_info = f"""
         <b>Nombre:</b> {tenant_name}<br/>

@@ -53,6 +53,8 @@ class ReportAnalyticsService:
         model=SOURCES.get(req.entity)
         if model is None:raise BadRequestException('Entidad de reporte no disponible.')
         q=db.query(model).filter(model.tenant_id.in_([c.id for c in companies]))
+        if model is Payment:
+            q=q.filter(Payment.purpose != 'WALLET_TOPUP')
         if model is User:
             q=q.filter(User.role_id=='CLIENTE');branch_col=User.branch_id
         else:branch_col=model.branch_id
@@ -86,7 +88,7 @@ class ReportAnalyticsService:
                 else:q=q.filter(Recipe.category.ilike(status))
             elif model is ActivityLog:q=q.filter(ActivityLog.category==status.upper())
             elif hasattr(model,'status'):
-                states={Appointment:{'PENDING','CONFIRMED','COMPLETED','CANCELLED'},Payment:{'PENDING','COMPLETED','CANCELLED','FAILED'},NutritionalPlan:{'DRAFT','APPROVED','REJECTED','ARCHIVED'}}
+                states={Appointment:{'PENDING','ACCEPTED','CONFIRMED','COMPLETED','CANCELLED'},Payment:{'PENDING','COMPLETED','CANCELLED','FAILED'},NutritionalPlan:{'DRAFT','APPROVED','REJECTED','ARCHIVED'}}
                 if status.upper() not in states.get(model,set()):raise BadRequestException('Ese estado no está disponible para esta entidad.')
                 q=q.filter(model.status==status.upper())
             else:raise BadRequestException('Esta entidad no tiene filtro por estado. Utiliza búsqueda o un campo específico.')

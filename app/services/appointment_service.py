@@ -52,7 +52,7 @@ class AppointmentService:
             db.query(Appointment)
             .filter(
                 Appointment.nutritionist_id == data.nutritionist_id,
-                Appointment.status.in_(["PENDING", "CONFIRMED"]),
+                Appointment.status.in_(["PENDING", "ACCEPTED", "CONFIRMED"]),
                 Appointment.scheduled_at >= overlap_start,
                 Appointment.scheduled_at <= overlap_end,
             )
@@ -69,7 +69,7 @@ class AppointmentService:
             db.query(Appointment)
             .filter(
                 Appointment.patient_id == current_user.id,
-                Appointment.status.in_(["PENDING", "CONFIRMED"]),
+                Appointment.status.in_(["PENDING", "ACCEPTED", "CONFIRMED"]),
                 Appointment.scheduled_at >= overlap_start,
                 Appointment.scheduled_at <= overlap_end,
             )
@@ -173,7 +173,7 @@ class AppointmentService:
 
     @staticmethod
     def confirm_appointment(db: Session, appointment_id: str, current_user: User) -> AppointmentOut:
-        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).with_for_update().first()
         if not appointment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -191,6 +191,8 @@ class AppointmentService:
         if current_user.role_id == "NUTRICIONISTA" and appointment.nutritionist_id != current_user.id:
             raise HTTPException(status_code=403, detail="Solo puedes confirmar tus propias citas.")
 
+        db.query(User).filter(User.id == appointment.nutritionist_id).with_for_update().first()
+
         # Validar solapamiento con citas CONFIRMED del mismo especialista (duración de 30 min)
         overlap_start = appointment.scheduled_at - timedelta(minutes=29, seconds=59)
         overlap_end = appointment.scheduled_at + timedelta(minutes=29, seconds=59)
@@ -200,7 +202,7 @@ class AppointmentService:
             .filter(
                 Appointment.id != appointment.id,
                 Appointment.nutritionist_id == appointment.nutritionist_id,
-                Appointment.status == "CONFIRMED",
+                Appointment.status.in_(["ACCEPTED", "CONFIRMED"]),
                 Appointment.scheduled_at >= overlap_start,
                 Appointment.scheduled_at <= overlap_end,
             )
@@ -216,7 +218,9 @@ class AppointmentService:
 
         if appointment.status != "PENDING":
             raise HTTPException(status_code=400, detail="Solo se pueden confirmar citas pendientes.")
-        appointment.status = "CONFIRMED"
+        appointment.status = "ACCEPTED"
+        from app.services.consultation_payment_service import ConsultationPaymentService
+        ConsultationPaymentService.ensure_charge(db, appointment)
         appointment.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(appointment)
@@ -227,9 +231,9 @@ class AppointmentService:
         NotificationService.create_notification(
             db=db,
             user_id=appointment.patient_id,
-            title="¡Cita Confirmada!",
-            message=f"Tu cita programada para el {formatted_date} con {nutri_name} ha sido confirmada.",
-            type="CITA_CONFIRMADA",
+            title="Cita aceptada: pago pendiente",
+            message=f"Tu cita programada para el {formatted_date} con {nutri_name} ha sido aceptada. Paga la consulta general de USD 5 para confirmarla.",
+            type="CITA_ACEPTADA",
             reference_id=appointment.id,
             tenant_id=appointment.tenant_id,
         )
@@ -243,7 +247,7 @@ class AppointmentService:
         reason: Optional[str],
         current_user: User,
     ) -> AppointmentOut:
-        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        appointment = db.query(Appointment).filter(Appointment.id == appointment_id).with_for_update().first()
         if not appointment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -262,6 +266,14 @@ class AppointmentService:
 
         if appointment.status == "COMPLETED":
             raise HTTPException(status_code=400, detail="Una cita atendida no se puede cancelar.")
+        from app.models.payment import Payment
+        charge = db.query(Payment).filter_by(appointment_id=appointment.id).first()
+        if charge and charge.status == 'COMPLETED':
+            raise HTTPException(409, detail="La cita está pagada. Solicita a la administración su cancelación y devolución antes de continuar.")
+        if charge and charge.paypal_order_id:
+            raise HTTPException(409, detail="Hay un pago PayPal iniciado. Verifica su resultado antes de cancelar la cita.")
+        if charge:
+            charge.status = 'CANCELLED'
         appointment.status = "CANCELLED"
         appointment.cancellation_reason = reason or "Cancelada por el administrador/especialista"
         appointment.updated_at = datetime.now(timezone.utc)

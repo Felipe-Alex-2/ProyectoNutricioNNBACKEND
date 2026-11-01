@@ -20,6 +20,9 @@ class PaymentCaptureRequest(BaseModel):
 
 
 class PaymentOut(BaseModel):
+    patient_id: Optional[str] = None
+    appointment_id: Optional[str] = None
+    purpose: str = "POS"
     branch_id: Optional[str] = None
     id: str
     tenant_id: str
