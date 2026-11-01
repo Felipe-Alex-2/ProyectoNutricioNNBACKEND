@@ -16,7 +16,7 @@ Las citas confirmadas de versiones anteriores conservan su estado y no reciben c
 - El saldo se obtiene del libro de movimientos decimales del paciente; no se modifica en el teléfono.
 - Una recarga solo se acredita cuando PayPal devuelve captura `COMPLETED`, con importe y moneda coincidentes. Las verificaciones repetidas no vuelven a acreditar.
 - Pagar una consulta debita USD 5 y confirma la cita en la misma transacción. Se bloquean saldo insuficiente, pacientes ajenos y cobros antes de aceptar.
-- Al volver de PayPal, usar «Verificar pago». Las órdenes pendientes y «Volver a abrir PayPal» permanecen disponibles desde Perfil aunque se cierre la pantalla.
+- Al volver de PayPal, la app verifica automáticamente la orden activa (o la más reciente pendiente al abrir la pantalla). «Verificar pago» permite reintentar manualmente. Las órdenes pendientes y «Volver a abrir PayPal» permanecen disponibles desde Perfil aunque se cierre la pantalla.
 - Las recargas son saldo anticipado: no se suman como ingresos por servicios en estadísticas ni reportes, para evitar contarlas otra vez cuando se paga la consulta.
 
 No se cambia a efectivo/wallet mientras exista una orden PayPal iniciada, para evitar dos cobros por la misma consulta. La devolución de una cita ya pagada requiere un proceso administrativo; este cambio no implementa reembolsos ni cancelaciones de pagos capturados.
